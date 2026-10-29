@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>THEREISNOSPOON — Autonomous Neural Chat VJ Broadcast Console</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">&#9673;</span>
+      <div>
+        <h1>THEREISNOSPOON <span class="dim">— Autonomous Neural Chat VJ Broadcast Console</span></h1>
+        <p class="sub">
+          <a id="channel-link" href="https://www.youtube.com/@THEREISNOSPOON-t4j" target="_blank" rel="noopener">
+            @THEREISNOSPOON-t4j</a>
+          <span class="sep">/</span>
+          <code id="channel-id">UC9ryqiyaNstEvvsw9EKpccA</code>
+        </p>
+      </div>
+    </div>
+    <div class="pills">
+      <span id="pill-mode" class="pill">mode: —</span>
+      <span id="pill-live" class="pill">RTMP: idle</span>
+      <span id="pill-server" class="pill">server: connecting</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="card player-card">
+      <div class="card-head">
+        <h2>10-Second Clean Neural Video</h2>
+        <div class="chips">
+          <span class="chip">864x480</span><span class="chip">24 fps</span>
+          <span class="chip">240 frames · 10.000 s</span><span class="chip">48 kHz stereo AAC</span>
+        </div>
+      </div>
+      <div class="screen">
+        <video id="player" width="864" height="480" controls autoplay muted loop playsinline preload="auto"></video>
+        <div id="player-empty" class="screen-empty">No clip in artifacts yet. Render one below.</div>
+      </div>
+      <div class="row between">
+        <div class="meta">
+          <span id="clip-name" class="mono">—</span>
+          <span id="clip-size" class="dim"></span>
+        </div>
+        <div class="row">
+          <a id="clip-sheet" class="link hidden" target="_blank" rel="noopener">contact sheet</a>
+          <a id="clip-receipt" class="link hidden" target="_blank" rel="noopener">receipt</a>
+          <button id="btn-render" class="btn primary">Render New 10s Clip</button>
+        </div>
+      </div>
+      <p id="clip-status" class="status-line"></p>
+
+      <div class="card-head sub-head">
+        <h3>Quality Comparison HUD <span class="dim">clean 10 s vs Study v2</span></h3>
+        <button id="btn-quality" class="btn ghost small">Re-measure</button>
+      </div>
+      <table class="hud">
+        <thead>
+          <tr><th>Metric</th><th>Clean 10 s</th><th>Study v2</th><th>&Delta;</th><th>Target</th></tr>
+        </thead>
+        <tbody id="hud-body"></tbody>
+      </table>
+      <p id="quality-status" class="status-line"></p>
+    </section>
+
+    <section class="card chat-card">
+      <div class="card-head">
+        <h2>Live Last-10 Chat Window</h2>
+        <span id="chat-count" class="badge">0 / 10</span>
+      </div>
+      <ol id="chat-list" class="chat-list"></ol>
+      <form id="chat-form" class="chat-form" autocomplete="off">
+        <input id="chat-author" class="input author" maxlength="40" aria-label="Chat author"
+               value="@console_viewer">
+        <input id="chat-message" class="input grow" maxlength="200" aria-label="Chat message"
+               placeholder="Type a live chat message to the VJ and press Enter..."
+               title="Say something to the Chat VJ">
+        <button class="btn primary" type="submit">Send</button>
+      </form>
+      <div class="row wrap">
+        <button id="btn-sample" class="btn">Load 10 Sample Chat Lines</button>
+        <button id="btn-poll" class="btn">Poll Live Chat Now</button>
+        <button id="btn-clear" class="btn danger">Clear Chat (Test Creative &amp; Strange Mode)</button>
+      </div>
+      <p id="chat-status" class="status-line"></p>
+    </section>
+
+    <section class="card brain-card">
+      <div class="card-head">
+        <h2>Live Chat VJ Brain Inspector</h2>
+        <span id="persona" class="persona">Chat VJ</span>
+      </div>
+      <dl class="brain">
+        <dt>Mode</dt><dd id="vj-mode" class="mono">—</dd>
+        <dt>Visual scene</dt><dd id="vj-scene" class="scene">—</dd>
+        <dt>Spoken dialogue</dt><dd id="vj-dialogue" class="dialogue mono">—</dd>
+      </dl>
+      <details>
+        <summary>Active system prompt</summary>
+        <pre id="vj-system" class="pre"></pre>
+      </details>
+      <details>
+        <summary>Full MiniMax-H3 prompt</summary>
+        <pre id="vj-prompt" class="pre"></pre>
+      </details>
+      <div class="row between">
+        <span id="vj-meta" class="dim"></span>
+        <button id="btn-preview" class="btn primary">Synthesize Fresh VJ Prompt</button>
+      </div>
+      <p id="vj-status" class="status-line"></p>
+    </section>
+
+    <section class="card rtmp-card">
+      <div class="card-head">
+        <h2>YouTube Live RTMP Stream Controller</h2>
+        <a class="link" href="https://www.youtube.com/@THEREISNOSPOON-t4j" target="_blank" rel="noopener">
+          open channel &#8599;</a>
+      </div>
+      <form id="rtmp-form" class="rtmp-form" autocomplete="off">
+        <label>Ingest URL
+          <input id="rtmp-url" class="input mono" value="rtmp://a.rtmp.youtube.com/live2">
+        </label>
+        <label>Stream key
+          <input id="rtmp-key" class="input mono" type="password" aria-label="YouTube stream key"
+                 title="YouTube Studio stream key">
+        </label>
+      </form>
+      <p class="dim small">Target: <span id="rtmp-target" class="mono">rtmp://a.rtmp.youtube.com/live2/…</span></p>
+      <div class="row wrap">
+        <button id="btn-stream-start" class="btn primary">Start Broadcast</button>
+        <button id="btn-stream-stop" class="btn danger">Stop Broadcast</button>
+        <button id="btn-stream-save" class="btn ghost">Save Config Only</button>
+      </div>
+      <dl id="rtmp-telemetry" class="telemetry"></dl>
+      <p id="rtmp-status" class="status-line"></p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div id="components" class="components"></div>
+    <span id="uptime" class="dim"></span>
+  </footer>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

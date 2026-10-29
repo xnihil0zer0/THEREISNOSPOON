@@ -1,0 +1,215 @@
+{
+  "signature": [
+    [
+      "Arm00_Naive_Unedited_Baseline.mp4",
+      2784887,
+      1793304474047736521
+    ],
+    [
+      "Run01_L9_A1_B1_C1_D1.mp4",
+      2918000,
+      1793304474131736441
+    ],
+    [
+      "Run02_L9_A1_B2_C2_D2.mp4",
+      4981011,
+      1793304473818736738
+    ],
+    [
+      "Run03_L9_A1_B3_C3_D3.mp4",
+      3652596,
+      1793304473548736995
+    ],
+    [
+      "Run04_L9_A2_B1_C2_D3.mp4",
+      4413712,
+      1793304474000736566
+    ],
+    [
+      "Run05_L9_A2_B2_C3_D1.mp4",
+      5380017,
+      1793304474195736381
+    ],
+    [
+      "Run06_L9_A2_B3_C1_D2.mp4",
+      2414903,
+      1793304473447737091
+    ],
+    [
+      "Run07_L9_A3_B1_C3_D2.mp4",
+      4974384,
+      1793304473680736869
+    ],
+    [
+      "Run08_L9_A3_B2_C1_D3.mp4",
+      2709992,
+      1793304473459737079
+    ],
+    [
+      "Run09_L9_A3_B3_C2_D1.mp4",
+      4994357,
+      1793304473676736873
+    ],
+    [
+      "Run10_Confirm_A3_B3_C3_D3.mp4",
+      3811788,
+      1793304473629736918
+    ]
+  ],
+  "clips": [
+    "Arm00_Naive_Unedited_Baseline.mp4",
+    "Run01_L9_A1_B1_C1_D1.mp4",
+    "Run02_L9_A1_B2_C2_D2.mp4",
+    "Run03_L9_A1_B3_C3_D3.mp4",
+    "Run04_L9_A2_B1_C2_D3.mp4",
+    "Run05_L9_A2_B2_C3_D1.mp4",
+    "Run06_L9_A2_B3_C1_D2.mp4",
+    "Run07_L9_A3_B1_C3_D2.mp4",
+    "Run08_L9_A3_B2_C1_D3.mp4",
+    "Run09_L9_A3_B3_C2_D1.mp4",
+    "Run10_Confirm_A3_B3_C3_D3.mp4"
+  ],
+  "mean": {
+    "grid_16x16_ratio": 1.1845995985345072,
+    "temporal_motion_mean_l1": 0.009780555904716897,
+    "active_motion_frame_fraction": 0.8224012274645186,
+    "temporal_accel_ratio": 1.5352771663386242,
+    "vae_17f_pulse_ratio": 2.6834510574571357,
+    "mean_laplacian_sharpness": 156.36397850482788,
+    "audio_rms_dbfs": -15.459489662767739
+  },
+  "per_clip": {
+    "Arm00_Naive_Unedited_Baseline.mp4": {
+      "grid_16x16_ratio": 1.0794387580196476,
+      "temporal_motion_mean_l1": 0.008368974238170413,
+      "active_motion_frame_fraction": 0.9451476793248945,
+      "temporal_accel_ratio": 1.2656130739454798,
+      "vae_17f_pulse_ratio": 1.8246412708510205,
+      "mean_laplacian_sharpness": 118.67454648349181,
+      "audio_rms_dbfs": -15.287876850497433,
+      "format_valid": false,
+      "grid_16x16_pass": true,
+      "quality_pass": false
+    },
+    "Run01_L9_A1_B1_C1_D1.mp4": {
+      "grid_16x16_ratio": 1.1214268460645898,
+      "temporal_motion_mean_l1": 0.008602708292229078,
+      "active_motion_frame_fraction": 0.9282700421940928,
+      "temporal_accel_ratio": 1.5351538998166092,
+      "vae_17f_pulse_ratio": 2.3839102223588484,
+      "mean_laplacian_sharpness": 111.22687139512999,
+      "audio_rms_dbfs": -15.242775420083776,
+      "format_valid": false,
+      "grid_16x16_pass": true,
+      "quality_pass": false
+    },
+    "Run02_L9_A1_B2_C2_D2.mp4": {
+      "grid_16x16_ratio": 1.2279515940033594,
+      "temporal_motion_mean_l1": 0.014926003743619324,
+      "active_motion_frame_fraction": 0.9367088607594937,
+      "temporal_accel_ratio": 1.6249243618303868,
+      "vae_17f_pulse_ratio": 2.5115275002281887,
+      "mean_laplacian_sharpness": 174.80428919314718,
+      "audio_rms_dbfs": -15.466586808323687,
+      "format_valid": false,
+      "grid_16x16_pass": false,
+      "quality_pass": false
+    },
+    "Run03_L9_A1_B3_C3_D3.mp4": {
+      "grid_16x16_ratio": 1.2164822168930418,
+      "temporal_motion_mean_l1": 0.006994953147677964,
+      "active_motion_frame_fraction": 0.7510548523206751,
+      "temporal_accel_ratio": 1.5905341318473223,
+      "vae_17f_pulse_ratio": 2.8002014616011883,
+      "mean_laplacian_sharpness": 142.80866880696024,
+      "audio_rms_dbfs": -15.48305650274067,
+      "format_valid": false,
+      "grid_16x16_pass": false,
+      "quality_pass": false
+    },
+    "Run04_L9_A2_B1_C2_D3.mp4": {
+      "grid_16x16_ratio": 1.2289232266780779,
+      "temporal_motion_mean_l1": 0.00970132485693242,
+      "active_motion_frame_fraction": 0.8016877637130801,
+      "temporal_accel_ratio": 1.6353634328136644,
+      "vae_17f_pulse_ratio": 2.9075639198491574,
+      "mean_laplacian_sharpness": 211.62279295606734,
+      "audio_rms_dbfs": -15.550253315954752,
+      "format_valid": false,
+      "grid_16x16_pass": false,
+      "quality_pass": false
+    },
+    "Run05_L9_A2_B2_C3_D1.mp4": {
+      "grid_16x16_ratio": 1.2714649563736642,
+      "temporal_motion_mean_l1": 0.013615132555098348,
+      "active_motion_frame_fraction": 0.9662447257383966,
+      "temporal_accel_ratio": 1.5546906649180854,
+      "vae_17f_pulse_ratio": 2.7894898514719086,
+      "mean_laplacian_sharpness": 180.62587284184298,
+      "audio_rms_dbfs": -15.377801952813519,
+      "format_valid": false,
+      "grid_16x16_pass": false,
+      "quality_pass": false
+    },
+    "Run06_L9_A2_B3_C1_D2.mp4": {
+      "grid_16x16_ratio": 1.1363117390648876,
+      "temporal_motion_mean_l1": 0.005271570611143885,
+      "active_motion_frame_fraction": 0.5021097046413502,
+      "temporal_accel_ratio": 1.4822645814576478,
+      "vae_17f_pulse_ratio": 1.9955285987111968,
+      "mean_laplacian_sharpness": 106.56048775543724,
+      "audio_rms_dbfs": -15.517899589117668,
+      "format_valid": false,
+      "grid_16x16_pass": true,
+      "quality_pass": false
+    },
+    "Run07_L9_A3_B1_C3_D2.mp4": {
+      "grid_16x16_ratio": 1.2204798138197175,
+      "temporal_motion_mean_l1": 0.012444018539559992,
+      "active_motion_frame_fraction": 0.9409282700421941,
+      "temporal_accel_ratio": 1.5326029944397208,
+      "vae_17f_pulse_ratio": 2.706947849634194,
+      "mean_laplacian_sharpness": 178.48358657861533,
+      "audio_rms_dbfs": -15.521025622262856,
+      "format_valid": false,
+      "grid_16x16_pass": false,
+      "quality_pass": false
+    },
+    "Run08_L9_A3_B2_C1_D3.mp4": {
+      "grid_16x16_ratio": 1.1393059722437318,
+      "temporal_motion_mean_l1": 0.005296641755294063,
+      "active_motion_frame_fraction": 0.5527426160337553,
+      "temporal_accel_ratio": 1.5284511935855098,
+      "vae_17f_pulse_ratio": 3.8752161484023087,
+      "mean_laplacian_sharpness": 154.11826644596337,
+      "audio_rms_dbfs": -15.598588216312573,
+      "format_valid": false,
+      "grid_16x16_pass": true,
+      "quality_pass": false
+    },
+    "Run09_L9_A3_B3_C2_D1.mp4": {
+      "grid_16x16_ratio": 1.1868521962088903,
+      "temporal_motion_mean_l1": 0.014987582388974506,
+      "active_motion_frame_fraction": 0.9367088607594937,
+      "temporal_accel_ratio": 1.5673745993531762,
+      "vae_17f_pulse_ratio": 2.7516015382384236,
+      "mean_laplacian_sharpness": 195.27610113399342,
+      "audio_rms_dbfs": -15.40993379602564,
+      "format_valid": false,
+      "grid_16x16_pass": false,
+      "quality_pass": false
+    },
+    "Run10_Confirm_A3_B3_C3_D3.mp4": {
+      "grid_16x16_ratio": 1.2019582645099722,
+      "temporal_motion_mean_l1": 0.0073772048231858746,
+      "active_motion_frame_fraction": 0.7848101265822784,
+      "temporal_accel_ratio": 1.5710758957172641,
+      "vae_17f_pulse_ratio": 2.971333270682061,
+      "mean_laplacian_sharpness": 145.80227996245782,
+      "audio_rms_dbfs": -15.598588216312573,
+      "format_valid": false,
+      "grid_16x16_pass": false,
+      "quality_pass": false
+    }
+  }
+}

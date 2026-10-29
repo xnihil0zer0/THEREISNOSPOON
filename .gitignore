@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments & caches
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Model weights & large tensor caches
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+
+# Temporary raw media streams
+*.rgb
+*.raw
+*.u8
+*.v
+*.a
+*.xwd
+*.flv
+
+# Secret keys & local environment overrides
+.env
+.env.*
+*stream_key*.txt
