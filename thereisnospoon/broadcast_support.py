@@ -1,4 +1,4 @@
-"""Paths, strict-JSON helpers, stream-target rules and the run_job.sh GPU dispatcher for the broadcast console."""
+"""Paths, strict-JSON helpers, stream-target rules and the resident run_job.sh GPU worker dispatcher."""
 from __future__ import annotations
 
 import contextlib
@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import quote, urlsplit
@@ -31,6 +32,8 @@ MODES = {True: ("chat_vj_10_lines", "Chat VJ", CHAT_VJ_SYSTEM_PROMPT_WITH_CHAT),
 JOBS = {"vj": ("any", "14G", "10"), "render": ("both", "24G", "30")}
 DEFAULT_AUTHOR = "@console_viewer"
 Job = Callable[[str, dict[str, Any]], dict[str, Any]]
+_WORKER_LOCK = threading.Lock()
+_WORKER_PROC: subprocess.Popen[str] | None = None
 
 
 def finite(value: Any) -> Any:
@@ -79,6 +82,8 @@ def artifact_url(path: Path) -> str:
 def latest_clip() -> Path | None:
     stamped = []
     for path in ARTIFACTS_DIR.glob("*.mp4"):
+        if path.name.startswith("."):
+            continue
         with contextlib.suppress(OSError):
             stamped.append((path.stat().st_mtime_ns, path))
     return max(stamped)[1] if stamped else None
@@ -117,12 +122,59 @@ def stream_target(url: str | None, key: str | None) -> str | None:
     return target
 
 
+def _ensure_resident_worker() -> subprocess.Popen[str]:
+    global _WORKER_PROC
+    if _WORKER_PROC is not None and _WORKER_PROC.poll() is None:
+        return _WORKER_PROC
+    comfy_py = Path("/mnt/ai-data/ComfyUI2/llm2/bin/python")
+    py_bin = str(comfy_py if comfy_py.exists() else Path(sys.executable))
+    cmd = [str(RUN_JOB), "both", "--name", "THEREISNOSPOON-resident", "--mem", "24G", "--minutes", "30", "--",
+           py_bin, "-u", "-m", "thereisnospoon.server", "--worker"]
+    path = os.pathsep.join(filter(None, (str(PROJECT_ROOT), os.environ.get("PYTHONPATH"))))
+    env = dict(os.environ, PYTHONPATH=path, PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True",
+               THEREISNOSPOON_INPROCESS_JOBS="1")
+    _WORKER_PROC = subprocess.Popen(
+        cmd, cwd=PROJECT_ROOT, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE, text=True, bufsize=1,
+    )
+    return _WORKER_PROC
+
+
+def stop_resident_worker() -> None:
+    global _WORKER_PROC
+    with _WORKER_LOCK:
+        if _WORKER_PROC is not None:
+            with contextlib.suppress(Exception):
+                if _WORKER_PROC.stdin:
+                    _WORKER_PROC.stdin.close()
+                _WORKER_PROC.terminate()
+                _WORKER_PROC.wait(timeout=3)
+            _WORKER_PROC = None
+
+
 def run_gpu_job(kind: str, request: dict[str, Any], local_job: Job) -> tuple[dict[str, Any], str]:
-    """Run a job behind the mandatory run_job.sh GPU queue, or in-process where the launcher is unavailable."""
-    mode, mem, minutes = JOBS[kind]
-    if not RUN_JOB.exists() or os.environ.get("THEREISNOSPOON_INPROCESS_JOBS") == "1":
-        return local_job(kind, request), "in-process"
+    """Run a job in-process when models are resident or via the warm resident run_job.sh worker."""
+    if kind == "vj" or not RUN_JOB.exists() or os.environ.get("THEREISNOSPOON_INPROCESS_JOBS") == "1":
+        return local_job(kind, request), "resident in-process"
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+    with _WORKER_LOCK:
+        for _ in range(2):
+            proc = _ensure_resident_worker()
+            try:
+                assert proc.stdin is not None and proc.stdout is not None
+                payload = json.dumps({"kind": kind, "request": finite(request)}, allow_nan=False)
+                proc.stdin.write(payload + "\n")
+                proc.stdin.flush()
+                while True:
+                    line = proc.stdout.readline()
+                    if not line:
+                        raise EOFError("Resident GPU worker closed stdout")
+                    line = line.strip()
+                    if line.startswith("{") and line.endswith("}"):
+                        return json.loads(line), "run_job.sh both (resident)"
+            except Exception:
+                stop_resident_worker()
+    mode, mem, minutes = JOBS[kind]
     with tempfile.TemporaryDirectory(prefix=f".job-{kind}-", dir=ARTIFACTS_DIR) as tmp:
         req, res = Path(tmp) / "request.json", Path(tmp) / "result.json"
         write_json(req, request)
@@ -132,12 +184,12 @@ def run_gpu_job(kind: str, request: dict[str, Any], local_job: Job) -> tuple[dic
                py_bin, "-m", "thereisnospoon.server", "--job", kind, str(req), str(res)]
         path = os.pathsep.join(filter(None, (str(PROJECT_ROOT), os.environ.get("PYTHONPATH"))))
         env = dict(os.environ, PYTHONPATH=path, PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True")
-        proc = subprocess.run(cmd, cwd=PROJECT_ROOT, env=env, capture_output=True,
-                              text=True, timeout=3600, check=False)
+        proc_s = subprocess.run(cmd, cwd=PROJECT_ROOT, env=env, capture_output=True, text=True, timeout=3600,
+                                check=False)
         result = read_json(res)
     if not isinstance(result, dict):
-        tail = (proc.stderr or proc.stdout or "").strip()[-400:]
-        raise RuntimeError(f"{kind} job exited with status {proc.returncode}: {tail}")
+        tail = (proc_s.stderr or proc_s.stdout or "").strip()[-400:]
+        raise RuntimeError(f"{kind} job exited with status {proc_s.returncode}: {tail}")
     return result, f"run_job.sh {mode}"
 
 

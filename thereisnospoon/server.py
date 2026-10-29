@@ -24,27 +24,46 @@ from .rtmp_broadcaster import YouTubeRTMPBroadcaster
 from .youtube_chat_poller import YouTubeChatPoller
 
 
+_DIRECTOR: ChatVJDirector | None = None
+_GENERATOR: Clean10sClipGenerator | None = None
+
+
 def execute_job(kind: str, request: dict[str, Any]) -> dict[str, Any]:
     """Body of one GPU job: Chat VJ direction, then for renders a single clean 10 s H3 clip."""
+    global _DIRECTOR, _GENERATOR
     result: dict[str, Any] = {}
-    director = ChatVJDirector()
+    if _DIRECTOR is None:
+        _DIRECTOR = ChatVJDirector()
+    if _GENERATOR is None:
+        _GENERATOR = Clean10sClipGenerator()
     try:
         if kind == "vj" or not request.get("prompt"):
-            scene = director.direct(request.get("lines") or [])
+            scene = _DIRECTOR.direct(request.get("lines") or [])
             result["vj"] = {"mode": scene.mode, "chat_lines": list(scene.chat_lines), "scene": scene.scene,
                             "spoken_line": scene.spoken_line, "dialogue_tag": scene.dialogue_tag,
                             "soundscape": scene.soundscape, "music": scene.music, "prompt": scene.prompt,
                             "samples": [list(s) for s in scene.samples], "elapsed_ms": scene.elapsed_ms}
-        director.close()
         if kind == "render":
             prompt = request.get("prompt") or result["vj"]["prompt"]
-            out = Clean10sClipGenerator().generate(prompt, Path(request["out_mp4"]), seed=int(request["seed"]))
+            out = _GENERATOR.generate(prompt, Path(request["out_mp4"]), seed=int(request["seed"]))
             result["clip"] = str(out)
+            result["render_sec"] = _GENERATOR.last_render_sec
     except Exception as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
-    finally:
-        director.close()
     return result
+
+
+def worker_main() -> int:
+    """Persistent resident GPU worker loop launched through run_job.sh both."""
+    for raw in sys.stdin:
+        line = raw.strip()
+        if not line:
+            continue
+        payload = json.loads(line)
+        res = execute_job(str(payload.get("kind") or "render"), dict(payload.get("request") or {}))
+        sys.stdout.write(json.dumps(finite(res), allow_nan=False) + "\n")
+        sys.stdout.flush()
+    return 0
 
 
 def job_main(argv: list[str]) -> int:
@@ -56,6 +75,8 @@ def job_main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 2 and sys.argv[1] == "--worker":
+        sys.exit(worker_main())
     if len(sys.argv) != 5 or sys.argv[1] != "--job" or sys.argv[2] not in ("vj", "render"):
         sys.exit("usage: python -m thereisnospoon.server --job <vj|render> <request.json> <result.json>")
     sys.exit(job_main(sys.argv[2:]))

@@ -181,6 +181,9 @@ def evaluate_clip_quality(mp4_path: Path) -> dict[str, Any]:
     return _analyse(mp4_path)[0]
 
 
+_REF_CACHE: dict[tuple[str, int, int], tuple[dict[str, Any], dict[int, np.ndarray]]] = {}
+
+
 def compare_against_study_v2(
     clean_mp4: Path, study_v2_mp4s: Sequence[Path], out_sheet_png: Path
 ) -> dict[str, Any]:
@@ -199,7 +202,14 @@ def compare_against_study_v2(
     draw.text((20, 10), "10s comparison | frames at 24 fps | center pixel gradients: gain 8, 16px cells", fill="white")
     reports = []
     for row, path in enumerate(paths):
-        report, frames = _analyse(path, keep_frames=True)
+        if row > 0:
+            st = path.stat()
+            ck = (str(path), st.st_size, st.st_mtime_ns)
+            if ck not in _REF_CACHE:
+                _REF_CACHE[ck] = _analyse(path, keep_frames=True)
+            report, frames = _REF_CACHE[ck]
+        else:
+            report, frames = _analyse(path, keep_frames=True)
         reports.append(report)
         top = 54 + row * 396
         label = "Clean 10s" if row == 0 else f"Study v2 #{row}"

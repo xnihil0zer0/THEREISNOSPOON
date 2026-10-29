@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import secrets
 import threading
 import time
@@ -12,7 +13,10 @@ from typing import Any, Callable
 from . import CHANNEL_HANDLE, CHANNEL_ID, CHANNEL_LIVE_URL, CHANNEL_URL, STUDIO_CHANNEL_URL, __version__
 from .broadcast_support import (ARTIFACTS_DIR, BASELINE_JSON, MODES, RUN_JOB, STUDY_V2_DIR, Job, clip_view, finite,
                                 latest_clip, normalize_lines, quality_view, read_json, receipt_path, run_gpu_job,
-                                sheet_path, signature, stream_target, study_v2_baseline, write_json)
+                                sheet_path, signature, stop_resident_worker, stream_target, study_v2_baseline,
+                                write_json)
+
+MAX_RING_CLIPS = 24
 
 
 class ConsoleError(Exception):
@@ -38,9 +42,15 @@ class BroadcastConsole:
         self.renders = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tins-render")
         self.measurer = ThreadPoolExecutor(max_workers=1, thread_name_prefix="tins-quality")
         self.started, self.polling, self.rtmp_target = time.time(), False, None
-        self.autoloop, self._stop_loop = False, threading.Event()
+        default_auto = os.environ.get("THEREISNOSPOON_AUTOPOLL", "1")
+        self.autoloop = os.environ.get("THEREISNOSPOON_AUTOLOOP", default_auto) != "0"
+        self._stop_loop = threading.Event()
+        self.clips_rendered = 0
         self.vj: dict[str, Any] = {"busy": False, "error": None}
-        self.clip_job: dict[str, Any] = {"busy": False, "stage": "idle", "error": None}
+        self.clip_job: dict[str, Any] = {
+            "busy": False, "stage": "idle", "error": None,
+            "clips_rendered": 0, "last_render_sec": None, "realtime_factor_x": None,
+        }
         self.quality: dict[str, Any] = {"busy": False, "error": None, "failed": None}
         self.baseline = read_json(BASELINE_JSON)
         self.health = dict.fromkeys(("ChatVJDirector", "Clean10sClipGenerator", "evaluate_clip_quality"), "not loaded")
@@ -65,15 +75,26 @@ class BroadcastConsole:
         self.health["evaluate_clip_quality"] = "ok"
 
     def _autoloop_worker(self) -> None:
-        while not self._stop_loop.wait(3.0):
+        while not self._stop_loop.wait(0.4):
             if not self.autoloop or self.clip_job["busy"] or self.vj.get("busy"):
                 continue
-            if self.broadcaster.is_streaming and int(self.broadcaster.get_telemetry().get("queued_clips") or 0) >= 1:
+            if self.broadcaster.is_streaming and int(self.broadcaster.get_telemetry().get("queued_clips") or 0) >= 2:
                 continue
             with contextlib.suppress(Exception):
                 self.poller.poll_once()
             with contextlib.suppress(Exception):
                 self.start_render(None, True)
+
+    @staticmethod
+    def _evict_old_clips() -> None:
+        mp4s = sorted(
+            (p for p in ARTIFACTS_DIR.glob("thereisnospoon_*.mp4") if not p.name.startswith(".")),
+            key=lambda p: p.stat().st_mtime_ns,
+        )
+        for old in mp4s[:-MAX_RING_CLIPS]:
+            for target in (old, receipt_path(old), sheet_path(old)):
+                with contextlib.suppress(OSError):
+                    target.unlink(missing_ok=True)
 
     def chat(self) -> dict[str, Any]:
         lines = self.poller.get_last_10_chat_lines()
@@ -84,7 +105,7 @@ class BroadcastConsole:
         mode, persona, system = MODES[payload["mode"] == "chat"]
         self.vj = {**payload, "director_mode": payload["mode"], "mode": mode, "persona": persona,
                    "system_prompt": system, "dialogue": payload["spoken_line"], "generated_at": time.time(),
-                   "elapsed_sec": round(elapsed, 2), "source": f"ChatVJDirector Qwen3-VL-4B via {source}",
+                   "elapsed_sec": round(elapsed, 2), "source": f"ChatVJDirector via {source}",
                    "busy": False, "error": None, "rendered": None}
         self.health["ChatVJDirector"] = "ok"
         return self.vj
@@ -117,7 +138,8 @@ class BroadcastConsole:
         with self.lock:
             if self.clip_job["busy"]:
                 raise ConsoleError(409, "A 10 s clip is already rendering")
-            self.clip_job = {"busy": True, "stage": "queued for both GPUs (run_job.sh both)", "error": None}
+            stage_msg = "rendering on resident dual GPUs (ARBOR-Zero + ARBOR-Aleph Quotient Uncollapse)"
+            self.clip_job.update(busy=True, stage=stage_msg, error=None)
         seed = secrets.randbelow(2 ** 31 - 1) if seed is None else seed
         prompt = None if fresh_prompt or self.vj.get("rendered") else self.vj.get("prompt")
         self.renders.submit(self.render, seed, prompt, self.poller.get_last_10_chat_lines())
@@ -125,19 +147,25 @@ class BroadcastConsole:
         return {"message": f"Rendering a 10 s clip (seed {seed}) from {source}", "seed": seed}
 
     def render(self, seed: int, prompt: str | None, lines: list[Any]) -> None:
-        out = ARTIFACTS_DIR / f"thereisnospoon_{time.strftime('%Y%m%d_%H%M%S')}_s{seed}.mp4"
+        seq = self.clips_rendered + 1
+        out = ARTIFACTS_DIR / f"thereisnospoon_{time.strftime('%Y%m%d_%H%M%S')}_{seq:04d}_s{seed}.mp4"
         request = {"prompt": prompt, "lines": lines, "out_mp4": str(out), "seed": seed}
         t0 = time.time()
         try:
             result, source = run_gpu_job("render", request, self.local_job)
+            elapsed = round(float(result.get("render_sec") or (time.time() - t0)), 2)
             if result.get("vj"):
-                self.set_vj(result["vj"], time.time() - t0, source)
+                self.set_vj(result["vj"], float(result["vj"].get("elapsed_ms", 0.0)) / 1000.0, source)
             if result.get("error"):
                 raise RuntimeError(result["error"])
             clip = Path(result["clip"])
+            self.clips_rendered += 1
+            rt_x = round(10.0 / max(elapsed, 0.05), 2)
+            self.clip_job.update(clips_rendered=self.clips_rendered, last_render_sec=elapsed, realtime_factor_x=rt_x)
             self.health["Clean10sClipGenerator"] = "ok"
             if self.vj.get("prompt") == (prompt or result["vj"]["prompt"]):
                 self.vj["rendered"] = clip.name
+            self._evict_old_clips()
         except Exception as exc:
             self.health["Clean10sClipGenerator"] = self.clip_job["error"] = f"Render failed: {exc}"[:300]
             return
@@ -193,7 +221,6 @@ class BroadcastConsole:
             try:
                 target = stream_target(rtmp_url, stream_key)
                 if action == "stop":
-                    self.autoloop = False
                     self.broadcaster.stop()
                 if target is not None and target != self.rtmp_target:
                     if self.broadcaster.is_streaming:
@@ -238,6 +265,7 @@ class BroadcastConsole:
     def shutdown(self) -> None:
         self._stop_loop.set()
         self.autoloop = False
+        stop_resident_worker()
         for stop in (self.poller.stop, self.broadcaster.stop):
             with contextlib.suppress(Exception):
                 stop()

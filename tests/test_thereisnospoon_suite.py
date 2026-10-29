@@ -100,9 +100,27 @@ def test_finite_and_normalize_lines() -> None:
     ]
 
 
+def test_fast_resident_vj_director_both_modes() -> None:
+    director = ChatVJDirector(seed=42)
+    s_empty = director.direct([])
+    assert s_empty.mode == "no_chat"
+    assert s_empty.elapsed_ms < 100.0
+    assert '<d>[English] "' in s_empty.prompt
+    sample_10 = [{"author": f"@u{i}", "message": f"cyber disco wave {i}"} for i in range(10)]
+    s_chat = director.direct(sample_10)
+    assert s_chat.mode == "chat"
+    assert len(s_chat.chat_lines) == 10
+    assert s_chat.elapsed_ms < 100.0
+    assert '<d>[English] "' in s_chat.prompt
+
+
 def test_broadcast_console_and_api_modes(monkeypatch: Any) -> None:
+    monkeypatch.setenv("THEREISNOSPOON_AUTOPOLL", "0")
+    monkeypatch.setenv("THEREISNOSPOON_AUTOLOOP", "0")
     import thereisnospoon.broadcast_console as bc_mod
     import thereisnospoon.server as srv_mod
+
+    srv_mod.console.shutdown()
 
     def fake_run_gpu_job(kind: str, request: dict[str, Any], _local: Any) -> tuple[dict[str, Any], str]:
         lines = request.get("lines") or []

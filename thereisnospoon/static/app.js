@@ -27,7 +27,8 @@ const METRICS = [
 ];
 
 const TELEMETRY = [
-  ["is_streaming", "streaming"], ["clips_broadcasted", "clips sent"], ["bytes_sent", "bytes sent"],
+  ["is_streaming", "streaming"], ["autoloop", "continuous autoloop"],
+  ["clips_broadcasted", "clips sent"], ["bytes_sent", "bytes sent"],
   ["uptime_sec", "uptime"], ["queue_size", "queued"], ["rtmp_url_masked", "target"],
   ["current_clip_path", "current clip"], ["last_error", "last error"],
 ];
@@ -160,8 +161,12 @@ function renderClip(clip) {
     if (clip[key]) $(id).href = clip[key];
   }
   $("btn-render").disabled = Boolean(clip.busy);
-  if (clip.busy) setStatus("clip-status", "Rendering 10 s clip on GPU… " + (clip.stage || ""));
+  const stats = clip.last_render_sec
+    ? ` · #${clip.clips_rendered || 1} rendered in ${clip.last_render_sec.toFixed(2)}s (${(clip.realtime_factor_x || (10 / clip.last_render_sec)).toFixed(2)}x real-time)`
+    : "";
+  if (clip.busy) setStatus("clip-status", "Rendering 10 s clip on GPU… " + (clip.stage || "") + stats);
   else if (clip.error) setStatus("clip-status", clip.error, "err");
+  else if (stats) setStatus("clip-status", "Continuous autoloop active" + stats, "ok");
 }
 
 function cellClass(dir, clean, ref, pass) {

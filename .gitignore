@@ -31,3 +31,7 @@ venv/
 .env
 .env.*
 *stream_key*.txt
+
+# Rolling live broadcast clips and temporary render outputs
+artifacts/*.mp4
+artifacts/thereisnospoon_*

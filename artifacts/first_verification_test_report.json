@@ -199,5 +199,79 @@
       }
     ],
     "contact_sheet_png": "/home/xnihil0zer0/AI-Data/THEREISNOSPOON/artifacts/clean_10s_chat_vj_test_vs_study_v2.png"
+  },
+  "arbor_aleph_faster_than_realtime_autoloop": {
+    "architecture": "ARBOR-Aleph (Consensus-Innovation Bath Transport + Petz Moment-Cell Transport)",
+    "method": "ARBOR-Aleph Quotient Uncollapse (Ridge Evidence Quotient Uncollapse + Hodge-Petz Conditional Quotient Uncollapse)",
+    "autoloop_default_on_startup": true,
+    "live_server_url": "http://127.0.0.1:8091",
+    "consecutive_10s_clips": [
+      {
+        "clip_index": 1,
+        "mode": "chat_vj_10_lines",
+        "render_sec": 23.75,
+        "realtime_factor_x": 0.42,
+        "note": "cold start + resident GPU prewarm"
+      },
+      {
+        "clip_index": 2,
+        "mode": "chat_vj_10_lines",
+        "render_sec": 8.98,
+        "realtime_factor_x": 1.11,
+        "faster_than_realtime": true
+      },
+      {
+        "clip_index": 3,
+        "mode": "creative_and_strange_no_chat",
+        "render_sec": 9.21,
+        "realtime_factor_x": 1.09,
+        "faster_than_realtime": true
+      },
+      {
+        "clip_index": 4,
+        "mode": "creative_and_strange_no_chat",
+        "render_sec": 9.48,
+        "realtime_factor_x": 1.05,
+        "faster_than_realtime": true
+      }
+    ],
+    "verified_warm_clip_quality": {
+      "path": "/home/xnihil0zer0/AI-Data/THEREISNOSPOON/artifacts/thereisnospoon_20261029_191659_0003_s594384823.mp4",
+      "width": 864,
+      "height": 480,
+      "nb_frames": 240.0,
+      "fps": 24.0,
+      "duration": 10.0,
+      "audio_sample_rate": 48000.0,
+      "audio_channels": 2,
+      "audio_codec": "aac",
+      "format_checks": {
+        "width": true,
+        "height": true,
+        "nb_frames": true,
+        "fps": true,
+        "duration": true,
+        "audio_sample_rate": true,
+        "audio_channels": true,
+        "audio_codec": true,
+        "video_duration": true,
+        "audio_duration": true,
+        "nominal_fps": true,
+        "counted_frames": true,
+        "decoded_frames": true
+      },
+      "decoded_frames": 240,
+      "grid_16x16_ratio": 1.0775516570747754,
+      "temporal_motion_mean_l1": 0.021176905655711266,
+      "active_motion_frame_fraction": 1.0,
+      "temporal_accel_ratio": 1.4090562868815173,
+      "vae_17f_pulse_ratio": 1.0265674751142169,
+      "mean_laplacian_sharpness": 448.91376448838855,
+      "audio_rms_dbfs": -18.800819357213214,
+      "format_valid": true,
+      "grid_16x16_pass": true,
+      "quality_pass": true
+    },
+    "verified_contact_sheet_png": "/home/xnihil0zer0/AI-Data/THEREISNOSPOON/artifacts/thereisnospoon_20261029_191659_0003_s594384823_vs_study_v2.png"
   }
 }
