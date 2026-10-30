@@ -83,7 +83,7 @@ class Clean10sClipGenerator:
             if _RESIDENT.get("ready"):
                 if self.engine is None:
                     self.engine = _RESIDENT["engine"]
-                return _RESIDENT
+                return {**_RESIDENT, "engine": self.engine}
             module = self._load_module()
             nodes, mm = module.runtime()
             if COND_CACHE_PT.is_file() and "cond_cache" not in _RESIDENT:
@@ -111,9 +111,10 @@ class Clean10sClipGenerator:
                     c0 = _RESIDENT["cond_cache"][0]
                     neg0 = _RESIDENT["neg_cond"]
                     sample_aleph_i2v_trajectory(eng, c0, neg0, seed=1, prompt="warmup")
-            self.engine = _RESIDENT["engine"] = eng
-            _RESIDENT["ready"] = True
-            return _RESIDENT
+                _RESIDENT["engine"] = eng
+                _RESIDENT["ready"] = True
+            self.engine = eng
+            return {**_RESIDENT, "engine": self.engine}
 
     def _fast_conditionings(self, prompt: str, seed: int, rgb: Any) -> tuple[Any, Any]:
         state = self._ensure_resident_runtime()
@@ -153,23 +154,23 @@ class Clean10sClipGenerator:
     @staticmethod
     def _decode_10s_audio(eng: Any, za: Any) -> Any:
         """Decode forward-only phase-continuous 10.0s stereo audio from AudioVAE on cuda:1 (no step-hold or loop)."""
+        import contextlib
         import torch
         import torch.nn.functional as F
 
-        dev_1 = eng.dev_vae
-        with torch.cuda.device(dev_1):
+        dev_1 = torch.device(eng.dev_vae)
+        ctx = torch.cuda.device(dev_1) if dev_1.type == "cuda" else contextlib.nullcontext()
+        with ctx:
             za_f = za.to(dev_1, torch.float32)
             t_in = int(za_f.shape[-1])
             if t_in < 400:
-                za_up = F.interpolate(za_f, size=(int(za_f.shape[-2]), 400), mode="bicubic", align_corners=False)
-                t_grid = torch.linspace(0.0, 1.0, 400, device=dev_1, dtype=torch.float32).view(1, 1, 1, 400)
-                c_idx = torch.arange(int(za_f.shape[1]), device=dev_1, dtype=torch.float32).view(1, -1, 1, 1)
-                env = 1.0 + 0.06 * torch.sin(t_grid * (7.0 + 0.37 * c_idx) + 0.19 * c_idx)
-                za_f = za_up * env
+                za_f = F.interpolate(za_f, size=(int(za_f.shape[-2]), 400), mode="bicubic", align_corners=False)
             raw = eng.audio_vae_model.decode(za_f[:, :, :, :400])
         if raw.ndim != 3 or tuple(raw.shape[:2]) != (1, 2):
             raise ValueError("Audio VAE must produce stereo (1, 2, N) audio")
         wav = raw[0].float().cpu()
+        if int(wav.shape[-1]) < 16000:
+            raise ValueError("Audio VAE output too short (< 0.5s at 32kHz)")
         wav = wav - wav.mean(dim=-1, keepdim=True)
         target = 320000
         if int(wav.shape[-1]) < target:
