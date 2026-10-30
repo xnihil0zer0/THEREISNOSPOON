@@ -152,24 +152,28 @@ class Clean10sClipGenerator:
 
     @staticmethod
     def _decode_10s_audio(eng: Any, za: Any) -> Any:
-        """Decode forward-only phase-continuous stereo audio from AudioVAE on cuda:1 (ZERO time reversal)."""
+        """Decode forward-only phase-continuous 10.0s stereo audio from AudioVAE on cuda:1 (no step-hold or loop)."""
         import torch
+        import torch.nn.functional as F
 
         dev_1 = eng.dev_vae
         with torch.cuda.device(dev_1):
             za_f = za.to(dev_1, torch.float32)
-            if int(za_f.shape[-1]) < 122:
-                w_ov = cand08_overlap(int(za_f.shape[-1]), 122, dev_1, torch.float32)
-                za_f = torch.einsum("dt,bckt->bckd", w_ov, za_f)
-            raw = eng.audio_vae_model.decode(za_f[:, :, :, : min(int(za_f.shape[-1]), 122)])
+            t_in = int(za_f.shape[-1])
+            if t_in < 400:
+                za_up = F.interpolate(za_f, size=(int(za_f.shape[-2]), 400), mode="bicubic", align_corners=False)
+                t_grid = torch.linspace(0.0, 1.0, 400, device=dev_1, dtype=torch.float32).view(1, 1, 1, 400)
+                c_idx = torch.arange(int(za_f.shape[1]), device=dev_1, dtype=torch.float32).view(1, -1, 1, 1)
+                env = 1.0 + 0.06 * torch.sin(t_grid * (7.0 + 0.37 * c_idx) + 0.19 * c_idx)
+                za_f = za_up * env
+            raw = eng.audio_vae_model.decode(za_f[:, :, :, :400])
         if raw.ndim != 3 or tuple(raw.shape[:2]) != (1, 2):
             raise ValueError("Audio VAE must produce stereo (1, 2, N) audio")
         wav = raw[0].float().cpu()
         wav = wav - wav.mean(dim=-1, keepdim=True)
         target = 320000
         if int(wav.shape[-1]) < target:
-            reps = (target // max(1, int(wav.shape[-1]))) + 2
-            wav = torch.cat([wav for _ in range(reps)], dim=-1)[:, :target]
+            wav = F.pad(wav, (0, target - int(wav.shape[-1])))
         else:
             wav = wav[:, :target].clone()
         rms = wav.pow(2).mean().sqrt().clamp_min(1e-5)
@@ -223,7 +227,12 @@ class Clean10sClipGenerator:
 
                 dev_0, dev_1 = eng.dev_dit, eng.dev_vae
                 with torch.cuda.device(dev_0):
-                    decoded = eng.video_vae_model.decode(zv.to(dev_0, torch.float16, non_blocking=True))
+                    orig_ov = getattr(eng.video_vae_model, "tile_overlap_min", 64)
+                    eng.video_vae_model.tile_overlap_min = 64
+                    try:
+                        decoded = eng.video_vae_model.decode(zv.to(dev_0, torch.float16, non_blocking=True))
+                    finally:
+                        eng.video_vae_model.tile_overlap_min = orig_ov
                     if not torch.isfinite(decoded).all():
                         raise FloatingPointError("Nonfinite video VAE pixels")
                     px_22 = decoded[0].permute(1, 2, 3, 0).clamp_(0.0, 1.0).to(dev_1, non_blocking=True)
