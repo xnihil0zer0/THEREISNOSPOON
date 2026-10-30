@@ -252,7 +252,7 @@ class Clean10sClipGenerator:
             "-f", "f32le", "-ar", "32000", "-ac", "2", "-i", str(work / "audio.f32"),
             "-map", "0:v:0", "-map", "1:a:0", "-t", "10.000",
             "-c:v", "libx264", "-preset", "superfast", "-threads", "8",
-            "-pix_fmt", "yuv420p", "-crf", "17", "-r", "24",
+            "-pix_fmt", "yuv420p", "-crf", "12", "-r", "24",
             "-ar", "48000", "-ac", "2", "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart", str(destination),
         ]

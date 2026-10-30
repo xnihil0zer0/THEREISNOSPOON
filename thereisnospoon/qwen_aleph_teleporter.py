@@ -93,13 +93,14 @@ def teleport_qwen_conditioning(
     mu_pos = v_fit["mu_pos"]
     pf, cf, df = extract_zkf0_vision_grid(z_kf0.detach())
     dy_mb = 0.55 * _eval_lowrank(cf, v_fit["fit_c16"]) + 0.45 * _eval_lowrank(df, v_fit["fit_d16"])
-    q_k = F.normalize(pf.reshape(1, -1), dim=-1)
+    q_m = v_fit.get("q_mean", torch.zeros((1, 405 * 96), device=dev))
+    q_k = F.normalize(pf.reshape(1, -1) - q_m, dim=-1)
     sims = (q_k @ v_fit["proto_keys"].T).squeeze(0)
-    w_k = F.softmax(sims * 18.0, dim=0)
+    w_k = F.softmax(sims * 48.0, dim=0)
     pd = v_fit["proto_deltas"]
     dy_p = (w_k.unsqueeze(0) @ pd.reshape(int(pd.shape[0]), -1)).reshape_as(mu_pos)
     rel_k = float(sims.max().clamp(0.0, 1.0).item()) ** 2
-    vis_413 = mu_pos + rel_k * dy_p + (1.0 - 0.65 * rel_k) * F.pad(dy_mb, (0, 0, 7, 1))
+    vis_413 = mu_pos + rel_k * dy_p + (1.0 - 0.85 * rel_k) * F.pad(dy_mb, (0, 0, 7, 1))
     n_txt = fixed_len - VISION_PREFIX_LEN
     e_in = encode_prompt_to_e64(prompt, art, n_txt=n_txt).to(dev, non_blocking=True)
     f64, f192 = _build_seq_context_features(e_in)
@@ -107,9 +108,9 @@ def teleport_qwen_conditioning(
     dy_t = _eval_lowrank(f192, t_fit["fit_d2_ctx"])
     q_t = F.normalize(f64.mean(dim=0, keepdim=True), dim=-1)
     sim_t = (q_t @ t_fit["proto_q"].T).squeeze(0)
-    wt = F.softmax(sim_t * 16.0, dim=0)
+    wt = F.softmax(sim_t * 48.0, dim=0)
     y_p = (wt.view(-1, 1, 1) * t_fit["proto_v"][:, :n_txt]).sum(dim=0)
-    rt = (float(sim_t.max().clamp(0.0, 1.0).item()) ** 2) * 0.88
+    rt = (float(sim_t.max().clamp(0.0, 1.0).item()) ** 2) * 0.96
     txt_68 = (1.0 - rt) * (mu_slot + dy_t) + rt * y_p
     if pos_raw is not None and torch.is_tensor(pos_raw[0][0]):
         t_u = pos_raw[0][0].to(dev, txt_68.dtype)
