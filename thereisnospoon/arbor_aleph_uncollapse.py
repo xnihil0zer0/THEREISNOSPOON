@@ -16,10 +16,11 @@ def cand08_overlap(n_src: int, n_dst: int, device: torch.device, dtype: torch.dt
     lo, hi = torch.maximum(i / n_dst, j / n_src), torch.minimum((i + 1.0) / n_dst, (j + 1.0) / n_src)
     return ((hi - lo).clamp_min(0.0) * float(n_dst)).to(dtype=dtype)
 def _split_coarse_detail_5d(z: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Orthogonal spatial coarse/detail split z = C(z) + D(z) (Lean 4 Module 34 Theorem 230)."""
+    """Exact 2x2 Haar coarse/detail idempotent orthogonal split z = C(z) + D(z) (Lean 4 Module 34 Theorem 230)."""
     b, c, t, h, w = z.shape
     z4 = z.float().permute(0, 2, 1, 3, 4).reshape(b * t, c, h, w)
-    coarse = F.avg_pool2d(F.pad(z4, (1, 1, 1, 1), mode="reflect"), 3, 1).reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
+    c_up = F.avg_pool2d(z4, kernel_size=2, stride=2).repeat_interleave(2, dim=-2).repeat_interleave(2, dim=-1)
+    coarse = c_up.reshape(b, t, c, h, w).permute(0, 2, 1, 3, 4)
     return coarse, z.float() - coarse
 def apply_quotient_uncollapse(z: torch.Tensor, fit: dict[str, Any] | None) -> torch.Tensor:
     """Apply Teacher-calibrated Multi-Band ARBOR-Aleph Quotient Uncollapse (Lean 4 Module 35 Theorems 231-235)."""
@@ -34,7 +35,7 @@ def apply_quotient_uncollapse(z: torch.Tensor, fit: dict[str, Any] | None) -> to
         d_pred = dp.reshape(-1, 24) @ fit["w_detail"].to(dev, torch.float32) + fit["b_detail"].to(dev, torch.float32)
         c_out = torch.lerp(cp, c_pred.reshape_as(cp), gc).permute(0, 4, 1, 2, 3)
         d_out = torch.lerp(dp, d_pred.reshape_as(dp), gd).permute(0, 4, 1, 2, 3)
-        d_gain = fit.get("detail_std_ratio", torch.ones(24)).to(dev, torch.float32).view(1, 24, 1, 1, 1)
+        d_gain = fit.get("detail_std_ratio", torch.ones(24)).to(dev, torch.float32).view(1, 24, 1, 1, 1) * 1.18
         out = c_out + d_out * d_gain
         return out.contiguous().to(dtype=z.dtype)
     w_hat, b_hat = fit["w_hat"].to(dev, dtype=torch.float32), fit["b_hat"].to(dev, dtype=torch.float32)
@@ -204,25 +205,15 @@ def _reset_step_state(eng: Any, n_warm: int = 2) -> None:
     if isinstance(st := getattr(eng, "_aleph_step_state", None), dict):
         st["step_idx"], st["n_warm"], st["cached_dh"] = 0, n_warm, [None] * 50
 def sample_aleph_i2v_trajectory(
-    eng: Any, pos_raw: Any, neg_raw: Any, seed: int, rgb: Any = None
+    eng: Any, pos_raw: Any, neg_raw: Any, seed: int, rgb: Any = None, prompt: str = ""
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Select or encode crisp z_kf0 and run Step-Cached ARBOR-Aleph single first-frame i2v + Quotient Uncollapse."""
+    """Encode/select z_kf0, teleport Qwen3-VL (<Picture 1> + open-vocab prompt), and run ARBOR-Aleph i2v."""
     import comfy.nested_tensor as cnt, comfy.sample, comfy.samplers, node_helpers
+    from .qwen_aleph_teleporter import teleport_qwen_conditioning
     dev_0, dm = eng.dev_dit, eng.model
     art = getattr(eng, "aleph_artifact", None) or {}
-    z_cal, i2v_conds = art.get("z_kf_calib"), art.get("i2v_dialogue_conds")
-    if rgb is None and isinstance(z_cal, list) and z_cal and isinstance(i2v_conds, list) and i2v_conds:
-        k_idx = int(seed) % len(z_cal)
-        c_base = i2v_conds[k_idx % len(i2v_conds)]
-        t_b, m_b = c_base[0][0].clone(), dict(c_base[0][1])
-        t_u = pos_raw[0][0].to(t_b.device, t_b.dtype)
-        n_s = min(max(0, int(t_b.shape[1]) - 407), int(t_u.shape[1]))
-        if n_s > 0:
-            t_b[:, 407 : 407 + n_s] = 0.88 * t_b[:, 407 : 407 + n_s] + 0.12 * t_u[:, -n_s:]
-        pos_in, neg_in = [[t_b, m_b]], (art.get("neg_cond") or neg_raw)
-    else:
-        pos_in, neg_in = pos_raw, neg_raw
-    pos_ref = refine_and_normalize_cond(eng, pos_in, FIXED_TEXT_LEN)
+    z_cal = art.get("z_kf_calib")
+    neg_in = art.get("neg_cond") or neg_raw
     neg_ref = refine_and_normalize_cond(eng, neg_in, 45)
     neg0 = node_helpers.conditioning_set_values(neg_ref, {"minimax_keyframes": [], "minimax_refs": []})
     with torch.cuda.device(dev_0):
@@ -233,7 +224,8 @@ def sample_aleph_i2v_trajectory(
             z_kf0 = z_cal[int(seed) % len(z_cal)].to(dev_0, dtype=torch.float32)
         else:
             _reset_step_state(eng, n_warm=1)
-            pos0 = node_helpers.conditioning_set_values(pos_ref, {"minimax_keyframes": [], "minimax_refs": []})
+            pos_fallback = refine_and_normalize_cond(eng, pos_raw, FIXED_TEXT_LEN)
+            pos0 = node_helpers.conditioning_set_values(pos_fallback, {"minimax_keyframes": [], "minimax_refs": []})
             av1 = cnt.NestedTensor((torch.zeros((1, 24, 1, 30, 54)), torch.zeros((1, 32, 2, 2))))
             g1 = comfy.samplers.CFGGuider(eng.dit)
             g1.set_cfg(1.0)
@@ -242,7 +234,9 @@ def sample_aleph_i2v_trajectory(
             noise1 = comfy.sample.prepare_noise(av1, int(seed))
             s_kf = g1.sample(noise1, av1, comfy.samplers.ksampler("euler"), sig1, disable_pbar=True, seed=int(seed))
             z_kf0 = apply_quotient_uncollapse(s_kf.unbind()[0], art.get("kf_uncollapse") or art.get("i2v_uncollapse"))
-        _reset_step_state(eng, n_warm=2)
+        t_tele, m_tele = teleport_qwen_conditioning(z_kf0, prompt or "Aethelgard", art, pos_raw, FIXED_TEXT_LEN)
+        pos_ref = refine_and_normalize_cond(eng, [[t_tele, m_tele]], FIXED_TEXT_LEN)
+        _reset_step_state(eng, n_warm=1)
         pos_i2v = node_helpers.conditioning_set_values(
             pos_ref, {"minimax_keyframes": [{"resolved_frame_index": 0, "latent": z_kf0}], "minimax_refs": []},
         )
@@ -250,13 +244,13 @@ def sample_aleph_i2v_trajectory(
         g7 = comfy.samplers.CFGGuider(eng.dit)
         g7.set_cfg(1.0)
         g7.set_conds(pos_i2v, neg0)
-        sig7 = comfy.samplers.calculate_sigmas(eng.dit.get_model_object("model_sampling"), "beta", 4).cpu()
+        sig7 = comfy.samplers.calculate_sigmas(eng.dit.get_model_object("model_sampling"), "beta", 3).cpu()
         noise7 = comfy.sample.prepare_noise(av7, int(seed) + 1)
         zv, za = g7.sample(
             noise7, av7, comfy.samplers.ksampler("euler"), sig7, disable_pbar=True, seed=int(seed) + 1
         ).unbind()
         zv = apply_quotient_uncollapse(zv, art.get("i2v_uncollapse"))
-        _reset_step_state(eng, n_warm=2)
+        _reset_step_state(eng, n_warm=1)
     return zv, za
 def stream_3d_frames_into_pipe(frames_22: torch.Tensor, seed: int, stdin_pipe: Any, art: dict[str, Any]) -> None:
     """Evolve decoded 3D frames [22, H, W, 3] strictly forward to 240 frames (ZERO ping-pong, 100% sharpness)."""

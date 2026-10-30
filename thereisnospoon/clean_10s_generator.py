@@ -110,7 +110,7 @@ class Clean10sClipGenerator:
                 if _RESIDENT.get("cond_cache"):
                     c0 = _RESIDENT["cond_cache"][0]
                     neg0 = _RESIDENT["neg_cond"]
-                    sample_aleph_i2v_trajectory(eng, c0, neg0, seed=1)
+                    sample_aleph_i2v_trajectory(eng, c0, neg0, seed=1, prompt="warmup")
             self.engine = _RESIDENT["engine"] = eng
             _RESIDENT["ready"] = True
             return _RESIDENT
@@ -199,7 +199,7 @@ class Clean10sClipGenerator:
                     image = image.convert("RGB").resize((864, 480), Image.Resampling.LANCZOS)
                     rgb = torch.from_numpy(np.array(image)).unsqueeze(0).float() / 255.0
             positive, negative = self._fast_conditionings(prompt, seed, rgb)
-            zv, za = sample_aleph_i2v_trajectory(eng, positive, negative, seed=seed, rgb=rgb)
+            zv, za = sample_aleph_i2v_trajectory(eng, positive, negative, seed=seed, rgb=rgb, prompt=prompt)
 
             out_mp4.parent.mkdir(parents=True, exist_ok=True)
             shm_dir = Path("/dev/shm") if Path("/dev/shm").is_dir() else out_mp4.parent
