@@ -1,0 +1,69 @@
+{
+  "clip": "v4_verified_warm_clip_04.mp4",
+  "signature": [
+    "v4_verified_warm_clip_04.mp4",
+    3853183,
+    1793326453452879300
+  ],
+  "measured_at": 1793330970.3950164,
+  "clean": {
+    "path": "/home/xnihil0zer0/AI-Data/THEREISNOSPOON/artifacts/v4_verified_warm_clip_04.mp4",
+    "width": 864,
+    "height": 480,
+    "nb_frames": 240.0,
+    "fps": 24.0,
+    "duration": 10.0,
+    "audio_sample_rate": 48000.0,
+    "audio_channels": 2,
+    "audio_codec": "aac",
+    "format_checks": {
+      "width": true,
+      "height": true,
+      "nb_frames": true,
+      "fps": true,
+      "duration": true,
+      "audio_sample_rate": true,
+      "audio_channels": true,
+      "audio_codec": true,
+      "video_duration": true,
+      "audio_duration": true,
+      "nominal_fps": true,
+      "counted_frames": true,
+      "decoded_frames": true
+    },
+    "decoded_frames": 240,
+    "grid_16x16_ratio": 1.158718879811885,
+    "temporal_motion_mean_l1": 0.005123966240039617,
+    "active_motion_frame_fraction": 0.891213389121339,
+    "temporal_accel_ratio": 0.8718550907101131,
+    "vae_17f_pulse_ratio": 1.0530290637686752,
+    "mean_laplacian_sharpness": 151.839972533384,
+    "audio_rms_dbfs": -17.615841052044313,
+    "format_valid": true,
+    "grid_16x16_pass": false,
+    "quality_pass": false
+  },
+  "study_v2_mean": {
+    "grid_16x16_ratio": 1.1845995985345072,
+    "temporal_motion_mean_l1": 0.009780555904716897,
+    "active_motion_frame_fraction": 0.8224012274645186,
+    "temporal_accel_ratio": 1.5352771663386242,
+    "vae_17f_pulse_ratio": 2.6834510574571357,
+    "mean_laplacian_sharpness": 156.36397850482788,
+    "audio_rms_dbfs": -15.459489662767739
+  },
+  "study_v2_clips": [
+    "Arm00_Naive_Unedited_Baseline.mp4",
+    "Run01_L9_A1_B1_C1_D1.mp4",
+    "Run02_L9_A1_B2_C2_D2.mp4",
+    "Run03_L9_A1_B3_C3_D3.mp4",
+    "Run04_L9_A2_B1_C2_D3.mp4",
+    "Run05_L9_A2_B2_C3_D1.mp4",
+    "Run06_L9_A2_B3_C1_D2.mp4",
+    "Run07_L9_A3_B1_C3_D2.mp4",
+    "Run08_L9_A3_B2_C1_D3.mp4",
+    "Run09_L9_A3_B3_C2_D1.mp4",
+    "Run10_Confirm_A3_B3_C3_D3.mp4"
+  ],
+  "contact_sheet": "v4_verified_warm_clip_04_vs_study_v2.png"
+}

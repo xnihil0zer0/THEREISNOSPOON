@@ -11,9 +11,10 @@ def cand08_overlap(n_src: int, n_dst: int, device: torch.device, dtype: torch.dt
     """Conservative cell-average depth/temporal overlap matrix (Lean 4 Module 34 Theorem 226)."""
     if n_src == n_dst:
         return torch.eye(n_src, device=device, dtype=dtype)
-    i = torch.arange(n_dst, device=device, dtype=torch.float32).unsqueeze(1)
-    j = torch.arange(n_src, device=device, dtype=torch.float32).unsqueeze(0)
-    lo, hi = torch.maximum(i / n_dst, j / n_src), torch.minimum((i + 1.0) / n_dst, (j + 1.0) / n_src)
+    i = torch.arange(n_dst, device=device, dtype=torch.float64).unsqueeze(1)
+    j = torch.arange(n_src, device=device, dtype=torch.float64).unsqueeze(0)
+    lo = torch.maximum(i / float(n_dst), j / float(n_src))
+    hi = torch.minimum((i + 1.0) / float(n_dst), (j + 1.0) / float(n_src))
     return ((hi - lo).clamp_min(0.0) * float(n_dst)).to(dtype=dtype)
 def _split_coarse_detail_5d(z: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """C1-smooth 3x3 reflect low-pass coarse/detail split z = C(z) + D(z) (Lean 4 Module 34 Theorem 230)."""
@@ -252,12 +253,17 @@ def sample_aleph_i2v_trajectory(
         _reset_step_state(eng, n_warm=1)
     return zv, za
 def stream_3d_frames_into_pipe(frames_22: torch.Tensor, seed: int, stdin_pipe: Any, art: dict[str, Any]) -> None:
-    """Evolve decoded 3D frames [22, H, W, 3] strictly forward at 24fps (ZERO ping-pong, >90% active motion)."""
+    """Evolve decoded 3D frames [22, H, W, 3] strictly forward at 24fps (ZERO ping-pong, G5 static-preserving)."""
     _ = seed, art
-    dev, f_src = frames_22.device, uncollapse_16x16_seams(frames_22.contiguous().clone(), beta=0.18)
-    m, h, w, _ = f_src.shape
-    xs, ys = torch.arange(16, w - 1, 16, device=dev), torch.arange(16, h - 1, 16, device=dev)
-    d_step = (f_src[1:] - f_src[:-1]).float().abs().mean(dim=(1, 2, 3)).clamp_min(1e-4)
+    dev, f_src = frames_22.device, uncollapse_16x16_seams(frames_22.contiguous().clone(), beta=0.12)
+    m = int(f_src.shape[0])
+    raw_d = (f_src[1:] - f_src[:-1]).float().abs().mean(dim=(1, 2, 3))
+    if float(raw_d.max().item()) <= 1e-6:
+        u8_static = (f_src[:1].expand(48, -1, -1, -1).clamp(0.0, 1.0) * 255.0).round().to(torch.uint8).cpu().numpy()
+        for _ in range(0, 240, 48):
+            stdin_pipe.write(memoryview(u8_static))
+        return
+    d_step = raw_d.clamp_min(1e-4)
     cum_s = torch.cat([torch.zeros(1, device=dev, dtype=torch.float32), torch.cumsum(d_step, dim=0)])
     s_targets = torch.linspace(0.0, float(cum_s[-1].item()), 240, device=dev)
     idx_hi = torch.searchsorted(cum_s, s_targets, right=True).clamp(1, m - 1)
@@ -267,12 +273,10 @@ def stream_3d_frames_into_pipe(frames_22: torch.Tensor, seed: int, stdin_pipe: A
     c_pad = F.pad(f_src.permute(0, 3, 1, 2), (2, 2, 2, 2), mode="reflect")
     coarse = F.avg_pool2d(c_pad, 5, 1).permute(0, 2, 3, 1).contiguous()
     detail = (f_src - coarse).contiguous()
-    g_22 = (F.pad(f_src[:, :, 1:, :] - f_src[:, :, :-1, :], (0, 0, 0, 1))
-            + 0.75 * F.pad(f_src[:, 1:, :, :] - f_src[:, :-1, :, :], (0, 0, 0, 0, 0, 1))).contiguous()
     df0, df1 = detail[:-1].float(), detail[1:].float()
     rho_step = ((df0 * df1).mean(dim=(1, 2, 3), keepdim=True) / (
-        df0.std(dim=(1, 2, 3), keepdim=True) * df1.std(dim=(1, 2, 3), keepdim=True)
-    ).clamp_min(1e-6)).clamp(-0.35, 0.995).to(f_src.dtype)
+        df0.std(dim=(1, 2, 3), keepdim=True, unbiased=False) * df1.std(dim=(1, 2, 3), keepdim=True, unbiased=False)
+    ).clamp_min(1e-6)).clamp(-0.35, 1.0).to(f_src.dtype)
     del df0, df1
     for c0 in range(0, 240, 48):
         sl = slice(c0, c0 + 48)
@@ -284,11 +288,7 @@ def stream_3d_frames_into_pipe(frames_22: torch.Tensor, seed: int, stdin_pipe: A
         )
         d0, d1, rho = detail[lo], detail[hi], rho_step[lo]
         symp_norm = torch.rsqrt(((1.0 - a).pow(2) + a.pow(2) + 2.0 * a * (1.0 - a) * rho).clamp_min(1e-4))
-        raw_c = (c_hermite + ((1.0 - a) * d0 + a * d1) * symp_norm * 1.12).clamp_(0.0, 1.0)
-        t_idx = torch.arange(c0, c0 + 48, device=dev, dtype=f_src.dtype).view(-1, 1, 1, 1)
-        adv = 0.85 * torch.sin(t_idx * 0.68) * g_22[lo] + 0.0055 * torch.cos(t_idx * 0.55)
-        out_chunk = (raw_c + adv).clamp_(0.0, 1.0)
-        out_chunk[:, :, xs - 1] = 0.86 * out_chunk[:, :, xs - 1] + 0.14 * out_chunk[:, :, xs]
-        out_chunk[:, ys - 1, :] = 0.86 * out_chunk[:, ys - 1, :] + 0.14 * out_chunk[:, ys, :]
+        d_gain = 1.0 + 0.08 * (1.0 - rho)
+        out_chunk = (c_hermite + ((1.0 - a) * d0 + a * d1) * symp_norm * d_gain).clamp_(0.0, 1.0)
         u8 = (out_chunk * 255.0).round_().to(torch.uint8).contiguous().cpu().numpy()
         stdin_pipe.write(memoryview(u8))

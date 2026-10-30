@@ -35,3 +35,5 @@ venv/
 # Rolling live broadcast clips and temporary render outputs
 artifacts/*.mp4
 artifacts/thereisnospoon_*
+artifacts/*/*.mp4
+artifacts/arbor_aleph_quotient_uncollapse_h3.pt
