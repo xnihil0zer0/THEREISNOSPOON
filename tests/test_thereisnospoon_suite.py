@@ -185,6 +185,7 @@ def test_no_affine_grid_sample_or_sine_wave_audio_in_generator() -> None:
     for name in ("clean_10s_generator.py", "arbor_aleph_uncollapse.py"):
         src = (root / name).read_text()
         assert "affine_grid" not in src and "grid_sample" not in src and "0.035 * torch.sin" not in src
+        assert ".flip(" not in src and "0.042 * torch.sin" not in src
 
 
 def test_autoloop_defaults_to_true_on_startup(monkeypatch: Any) -> None:

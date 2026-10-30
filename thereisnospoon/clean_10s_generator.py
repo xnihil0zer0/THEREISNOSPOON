@@ -1,4 +1,4 @@
-"""Standalone H3 generation with ARBOR-Aleph + ARBOR-Aleph Quotient Uncollapse dual-GPU acceleration."""
+"""Standalone H3 generation with ARBOR-Zero + ARBOR-Aleph Quotient Uncollapse dual-GPU acceleration."""
 from __future__ import annotations
 
 import hashlib
@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image
 
 from .arbor_aleph_uncollapse import (
+    cand08_overlap,
     sample_aleph_i2v_trajectory,
     setup_aleph_dual_gpu_engine,
     stream_3d_frames_into_pipe,
@@ -79,8 +80,9 @@ class Clean10sClipGenerator:
         import torch
 
         with _RESIDENT_LOCK:
-            if _RESIDENT.get("ready") and self.engine is None:
-                self.engine = _RESIDENT["engine"]
+            if _RESIDENT.get("ready"):
+                if self.engine is None:
+                    self.engine = _RESIDENT["engine"]
                 return _RESIDENT
             module = self._load_module()
             nodes, mm = module.runtime()
@@ -88,6 +90,7 @@ class Clean10sClipGenerator:
                 saved = torch.load(str(COND_CACHE_PT), map_location="cpu", weights_only=False)
                 _RESIDENT["neg_cond"] = saved.get("neg_cond")
                 _RESIDENT["cond_cache"] = saved.get("cond_cache", {})
+                _RESIDENT["prompt_exact_cache"] = saved.get("prompt_exact_cache", {})
                 del saved
                 if BOOK_PATH.is_file():
                     bspec = importlib.util.spec_from_file_location("_book_scenes", BOOK_PATH)
@@ -113,9 +116,9 @@ class Clean10sClipGenerator:
             return _RESIDENT
 
     def _fast_conditionings(self, prompt: str, seed: int, rgb: Any) -> tuple[Any, Any]:
-        import torch
-
         state = self._ensure_resident_runtime()
+        exact_cache = state.setdefault("prompt_exact_cache", {})
+        p_key = prompt.strip()
         if self.text_encoder is not None or not state.get("cond_cache"):
             module = self._load_module()
             encoder = self.text_encoder or module.ARBORFastMiniMaxH3TextEncoder()
@@ -123,56 +126,57 @@ class Clean10sClipGenerator:
             neg = encoder.encode("", fast=True)
             if self.text_encoder is None:
                 encoder.close()
+            exact_cache[p_key] = pos
             return pos, neg
-        cond_cache = state["cond_cache"]
         neg_raw = state["neg_cond"]
-        scene_words = state.get("scene_words") or {}
-        p_words = _word_set(prompt)
-        digest = int(hashlib.sha256(f"{seed}:{prompt}".encode()).hexdigest()[:12], 16)
-        scored = sorted(
-            (
-                (len(p_words & scene_words.get(k, set())), ((digest + k * 2654435761) & 0xFFFFFFFF), k)
-                for k in cond_cache
-            ),
-            reverse=True,
-        )
-        c1 = cond_cache[scored[0][2]]
-        c2 = cond_cache[scored[min(1, len(scored) - 1)][2]]
-        beta = 0.22 + 0.56 * ((digest % 1000) / 1000.0)
-        t_blend = _slerp_cond(c1[0][0].float(), c2[0][0].float(), beta)
-        t_centered = t_blend - t_blend.mean(dim=-1, keepdim=True)
-        gen = torch.Generator(device="cpu").manual_seed(int(seed) ^ (digest & 0x7FFFFFFF))
-        pert = torch.randn(t_blend.shape, generator=gen, dtype=torch.float32)
-        t_std = t_centered.std(dim=-1, keepdim=True).clamp_min(1e-4)
-        t_mod = (t_blend + 0.015 * t_std * (pert - pert.mean(dim=-1, keepdim=True))).to(dtype=c1[0][0].dtype)
-        meta = dict(c1[0][1])
+        if p_key in exact_cache:
+            c_best = exact_cache[p_key]
+        else:
+            cond_cache = state["cond_cache"]
+            scene_words = state.get("scene_words") or {}
+            p_words = _word_set(prompt)
+            digest = int(hashlib.sha256(f"{seed}:{p_key}".encode()).hexdigest()[:12], 16)
+            scored = sorted(
+                (
+                    (len(p_words & scene_words.get(k, set())), -((digest ^ (k * 2654435761)) & 0xFFFFFFFF), k)
+                    for k in cond_cache
+                ),
+                reverse=True,
+            )
+            c_best = cond_cache[scored[0][2]]
+        t_clean = c_best[0][0].clone()
+        meta = dict(c_best[0][1])
         if meta.get("minimax_token_tags") is not None:
-            meta["minimax_token_tags"] = meta["minimax_token_tags"][: t_mod.shape[1]]
-        return [[t_mod, meta]], [[neg_raw[0][0].to(dtype=c1[0][0].dtype), dict(neg_raw[0][1])]]
+            meta["minimax_token_tags"] = meta["minimax_token_tags"][: t_clean.shape[1]]
+        return [[t_clean, meta]], [[neg_raw[0][0].to(dtype=t_clean.dtype), dict(neg_raw[0][1])]]
 
     @staticmethod
     def _decode_10s_audio(eng: Any, za: Any) -> Any:
-        """Decode real stereo audio from AudioVAE on cuda:1 with zero synthetic sine-wave oscillators."""
+        """Decode forward-only phase-continuous stereo audio from AudioVAE on cuda:1 (ZERO time reversal)."""
         import torch
 
         dev_1 = eng.dev_vae
         with torch.cuda.device(dev_1):
-            raw = eng.audio_vae_model.decode(za[:, :, :, : min(int(za.shape[-1]), 122)].to(dev_1, torch.float32))
+            za_f = za.to(dev_1, torch.float32)
+            if int(za_f.shape[-1]) < 122:
+                w_ov = cand08_overlap(int(za_f.shape[-1]), 122, dev_1, torch.float32)
+                za_f = torch.einsum("dt,bckt->bckd", w_ov, za_f)
+            raw = eng.audio_vae_model.decode(za_f[:, :, :, : min(int(za_f.shape[-1]), 122)])
         if raw.ndim != 3 or tuple(raw.shape[:2]) != (1, 2):
             raise ValueError("Audio VAE must produce stereo (1, 2, N) audio")
         wav = raw[0].float().cpu()
         wav = wav - wav.mean(dim=-1, keepdim=True)
         target = 320000
-        if wav.shape[-1] < target:
+        if int(wav.shape[-1]) < target:
             reps = (target // max(1, int(wav.shape[-1]))) + 2
-            wav = torch.cat([wav if i % 2 == 0 else wav.flip(-1) for i in range(reps)], dim=-1)[:, :target]
+            wav = torch.cat([wav for _ in range(reps)], dim=-1)[:, :target]
         else:
             wav = wav[:, :target].clone()
         rms = wav.pow(2).mean().sqrt().clamp_min(1e-5)
         wav = (torch.tanh(wav * (0.16 / rms)) * 0.85).clamp(-0.92, 0.92)
         fade = torch.linspace(0.0, 1.0, 320)
         wav[:, :320] *= fade
-        wav[:, -320:] *= fade.flip(0)
+        wav[:, -320:] *= (1.0 - fade)
         return wav
 
     def generate(self, prompt: str, out_mp4: Path, *, seed: int = 49, start_image: Path | None = None) -> Path:
@@ -222,8 +226,8 @@ class Clean10sClipGenerator:
                     decoded = eng.video_vae_model.decode(zv.to(dev_0, torch.float16, non_blocking=True))
                     if not torch.isfinite(decoded).all():
                         raise FloatingPointError("Nonfinite video VAE pixels")
-                    px_22 = decoded[0].permute(1, 2, 3, 0).clamp_(0.0, 1.0)
-                    px_22_d1 = px_22.to(dev_1, dtype=torch.float16, non_blocking=True)
+                    px_22 = decoded[0].permute(1, 2, 3, 0).clamp_(0.0, 1.0).to(dev_1, non_blocking=True)
+                    del decoded
                 torch.cuda.synchronize(dev_0)
 
                 aud_thread.join()
@@ -232,7 +236,7 @@ class Clean10sClipGenerator:
                 del zv, za
 
                 art = getattr(eng, "aleph_artifact", None) or {}
-                self._mux_stream(work, tmp_out, px_22_d1, seed, dev_1, art)
+                self._mux_stream(work, tmp_out, px_22, seed, dev_1, art)
                 tmp_out.replace(out_mp4)
         self.last_render_sec = round(time.perf_counter() - t0, 3)
         return out_mp4
